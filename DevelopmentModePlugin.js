@@ -13,21 +13,27 @@ const util = require("./util");
  */
 class DevelopmentModePlugin {
   constructor(attributes) {
-    let i18nDataTemplate, messages;
+    let i18nDataTemplate, messagesPath;
     const cldr = attributes.cldr || util.cldr;
     const timeZoneData = attributes.timeZoneData || util.timeZoneData;
     const tmpdirBase = attributes.tmpdirBase || ".";
     const tmpdir = util.tmpdir(tmpdirBase);
 
-    messages = attributes.messages && util.readMessages(attributes.messages, attributes.developmentLocale);
+    messagesPath = path.resolve(attributes.messages.replace("[locale]", attributes.developmentLocale));
 
     i18nDataTemplate = [
+      "var messages = require(\"" + this.messagesPath + "\");",
       "var Globalize = require(\"globalize\");",
       "",
       `Globalize.load(${JSON.stringify(cldr(attributes.developmentLocale))});`,
-      messages ? `Globalize.loadMessages(${JSON.stringify(messages)});` : "",
+      messagesPath ? `Globalize.loadMessages(${messages});` : "",
       `Globalize.loadTimeZone(${JSON.stringify(timeZoneData())});`,
       `Globalize.locale(${JSON.stringify(attributes.developmentLocale)});`,
+      "",
+      "if (module.hot) {",
+      "  Globalize.loadMessages(messages);",
+      "  module.hot.accept();",
+      "}",
       "",
       "module.exports = Globalize;"
     ].join("\n");

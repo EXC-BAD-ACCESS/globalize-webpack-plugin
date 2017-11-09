@@ -76,7 +76,7 @@ class GlobalizeCompilerHelper {
       if (!/No formatters or parsers has been provided/.test(e.message) || !request) {
         throw e;
       }
-      content = "module.exports = require(\"globalize\");";
+      content = "module.exports = require(\"globalize\");"; // "module.exports = {};";
     }
 
     // Inject set defaultLocale.

@@ -1,6 +1,7 @@
 "use strict";
 
 const DevelopmentModePlugin = require("./DevelopmentModePlugin");
+const PrerenderModePlugin = require("./PrerenderModePlugin");
 const ProductionModePlugin = require("./ProductionModePlugin");
 
 /**
@@ -21,7 +22,9 @@ class GlobalizePlugin {
   apply(compiler) {
     compiler.apply(
       this.attributes.production ?
-      new ProductionModePlugin(this.attributes) :
+      (compiler.options.target === "node" ?
+        new PrerenderModePlugin(this.attributes) :
+        new ProductionModePlugin(this.attributes) :
       new DevelopmentModePlugin(this.attributes)
     );
   }
