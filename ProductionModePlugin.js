@@ -126,6 +126,7 @@ class ProductionModePlugin {
       });
     });
 
+
     compiler.plugin("this-compilation", (compilation) => {
       compilation.plugin("after-optimize-chunks", (chunks) => {
         let hasAnyModuleBeenIncluded;
@@ -134,6 +135,9 @@ class ProductionModePlugin {
                  map(chunk => [chunk.name.replace("globalize-compiled-data-", ""), chunk] )
         );
 
+        console.error("chunks: ", chunks);
+        console.error("compiledDataChunks: ", compiledDataChunks);
+        console.error("allModules: ", allModules);
         allModules.forEach((module) => {
           let chunkRemoved;
           if (globalizeCompilerHelper.isCompiledDataModule(module.request)) {
