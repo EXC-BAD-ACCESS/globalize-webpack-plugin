@@ -24,7 +24,7 @@ class GlobalizePlugin {
       this.attributes.production ?
       (compiler.options.target === "node" ?
         new PrerenderModePlugin(this.attributes) :
-        new ProductionModePlugin(this.attributes) :
+        new ProductionModePlugin(this.attributes) ) :
       new DevelopmentModePlugin(this.attributes)
     );
   }
