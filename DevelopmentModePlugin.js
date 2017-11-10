@@ -22,11 +22,11 @@ class DevelopmentModePlugin {
     messagesPath = path.resolve(attributes.messages.replace("[locale]", attributes.developmentLocale));
 
     i18nDataTemplate = [
-      "var messages = require(\"" + this.messagesPath + "\");",
+      "var messages = require(\"" + messagesPath + "\");",
       "var Globalize = require(\"globalize\");",
       "",
       `Globalize.load(${JSON.stringify(cldr(attributes.developmentLocale))});`,
-      messagesPath ? `Globalize.loadMessages(${messages});` : "",
+      messagesPath ? "Globalize.loadMessages(messages);" : "",
       `Globalize.loadTimeZone(${JSON.stringify(timeZoneData())});`,
       `Globalize.locale(${JSON.stringify(attributes.developmentLocale)});`,
       "",
