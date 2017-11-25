@@ -84,7 +84,7 @@ class GlobalizeCompilerHelper {
   }
 
   isCompiledDataModule(request) {
-    return request && this.modules[request.replace(/.*!/, "")];
+    return request && this.modules[request.replace ? request.replace(/.*!/, "") : request];
   }
 }
 

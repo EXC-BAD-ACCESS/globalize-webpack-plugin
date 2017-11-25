@@ -30,6 +30,9 @@ module.exports = {
   isGlobalizeModule: isGlobalizeModule,
 
   isGlobalizeRuntimeModule: (filepath) => {
+    if(!filepath.split) {
+      return false;
+    }
     filepath = filepath.split( /[\/\\]/ );
     const i = filepath.lastIndexOf("globalize-runtime");
     const j = filepath.lastIndexOf("globalize-runtime.js");
