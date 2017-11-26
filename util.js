@@ -29,9 +29,29 @@ module.exports = {
 
   isGlobalizeModule: isGlobalizeModule,
 
-  isGlobalizeRuntimeModule: (filepath) => {
-    if(!filepath.split) {
-      return false;
+  dllMap: null,
+
+  isGlobalizeRuntimeModule: (filepath, manifests) => {
+    var dllMap = module.exports.dllMap;
+    if(!dllMap) {
+      dllMap = module.exports.dllMap = {}
+      for (var a = 0; a < manifests.length; a++) {
+        var manifest = manifests[a];
+        var keys = Object.keys(manifest.content);
+        for (var b = 0; b < keys.length; b++) {
+          var key = keys[b];
+          var val = manifest.content[key];
+          dllMap[val.id] = {
+            name: manifest.name,
+            request: key,
+          };
+        }
+      }
+    }
+
+    var dll = dllMap[filepath];
+    if(dll) {
+      filepath = dll.request;
     }
     filepath = filepath.split( /[\/\\]/ );
     const i = filepath.lastIndexOf("globalize-runtime");

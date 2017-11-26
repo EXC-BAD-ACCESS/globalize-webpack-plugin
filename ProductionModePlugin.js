@@ -28,6 +28,8 @@ class ProductionModePlugin {
     this.timeZoneData = attributes.timeZoneData || util.timeZoneData;
     const tmpdirBase = attributes.tmpdirBase || ".";
     this.tmpdir = util.tmpdir(tmpdirBase);
+    this.manifests = attributes.manifests || []
+    this.manifestModuleMap = {}
   }
 
   apply(compiler) {
@@ -151,6 +153,21 @@ class ProductionModePlugin {
                 module.addChunk(chunk);
               }
             }
+          } else if(module.request && module.request.startsWith) {
+            for(var i = 0; i < this.manifests.length; i++) {
+              var manifest = this.manifests[i];
+              if(module.request == manifest.name) {
+                module.getChunks().forEach((chunk) => {
+                  for (let [locale, chunk] of compiledDataChunks.entries()) {
+                    if (chunk.name.endsWith(locale)) {
+                      chunk.addModule(module);
+                      module.addChunk(chunk);
+                      this.manifestModuleMap[manifest.name] = module;
+                    }
+                  }
+                })
+              }
+            }
           }
         });
         for (let [locale, chunk] of compiledDataChunks.entries()) {
@@ -205,16 +222,23 @@ class ProductionModePlugin {
         compilation.chunks.forEach((chunk) => {
           chunk.forEachModule((module) => {
             let aux;
-            const request = module.request;
-            if (request && util.isGlobalizeRuntimeModule(request)) {
+            var request = module.request;
+            if (request && util.isGlobalizeRuntimeModule(request, this.manifests)) {
               // While request has the full pathname, aux has something like
               // "globalize/dist/globalize-runtime/date".
-              aux = request.split(/[\/\\]/);
-              aux = aux.slice(aux.lastIndexOf("globalize")).join("/").replace(/\.js$/, "");
 
               // some plugins, like HashedModuleIdsPlugin, may change module ids
               // into strings.
-              let moduleId = module.id;
+              var moduleId = module.id;
+              var dll = util.dllMap[request]
+              if(dll) {
+                moduleId = request;
+                request = dll.request;
+              }
+
+              aux = request.split(/[\/\\]/);
+              aux = aux.slice(aux.lastIndexOf("globalize")).join("/").replace(/\.js$/, "");
+
               if (typeof moduleId === "string") {
                 moduleId = JSON.stringify(moduleId);
               }
@@ -242,22 +266,40 @@ class ProductionModePlugin {
             //   - the true entry module should be globalize-compiled-data
             //     module, which has been created as a NormalModule
             chunk.removeModule(chunk.entryModule);
-            chunk.entryModule = chunk.getModules().find((module) => module.context.endsWith(".tmp-globalize-webpack"));
+            chunk.entryModule = chunk.getModules().find((module) => module.context && module.context.endsWith(".tmp-globalize-webpack"));
 
             const newModules = chunk.mapModules((module) => {
               let fnContent;
+
               if (module === chunk.entryModule) {
                 // rewrite entry module to contain the globalize-compiled-data
                 const locale = chunk.name.replace("globalize-compiled-data-", "");
                 fnContent = globalizeCompilerHelper.compile(locale)
                   .replace("typeof define === \"function\" && define.amd", "false")
                   .replace(/require\("([^)]+)"\)/g, (garbage, moduleName) => {
-                    return `__webpack_require__(${globalizeModuleIdsMap[moduleName]})`;
+                    var dll = util.dllMap[globalizeModuleIdsMap[moduleName]];
+                    if(dll) {
+                      return `(__webpack_require__(${this.manifestModuleMap[dll.name].id}))(${globalizeModuleIdsMap[moduleName]})`;
+                    } else {
+                      return `__webpack_require__(${globalizeModuleIdsMap[moduleName]})`;
+                    }
                   });
               } else {
+                for(var i = 0; i < this.manifests.length; i++) {
+                  var manifest = this.manifests[i];
+                  if(module.request == manifest.name) {
+                    return module;
+                  }
+                }
+
                 // rewrite all other modules in this chunk as proxies for
                 // Globalize
-                fnContent = `module.exports = __webpack_require__(${globalizeModuleIds[0]});`;
+                var dll = util.dllMap[globalizeModuleIds[0]];
+                if(dll) {
+                  fnContent = `module.exports = (__webpack_require__(${this.manifestModuleMap[dll.name].id}))(${globalizeModuleIds[0]});`;
+                } else {
+                  fnContent = `module.exports = __webpack_require__(${globalizeModuleIds[0]});`;
+                }
               }
 
               // The `module` object in scope here is in each locale chunk, and
@@ -286,8 +328,9 @@ class ProductionModePlugin {
       // appear after globalize runtime modules, but before any app code.
       compilation.plugin("optimize-chunk-order", (chunks) => {
         const cachedChunkScore = {};
+        var that = this;
         function moduleScore(module) {
-          if (module.request && util.isGlobalizeRuntimeModule(module.request)) {
+          if (module.request && util.isGlobalizeRuntimeModule(module.request, that.manifests)) {
             return 1;
           } else if (module.request && globalizeCompilerHelper.isCompiledDataModule(module.request)) {
             return 0;

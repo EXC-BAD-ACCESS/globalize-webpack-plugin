@@ -130,7 +130,7 @@ class PrerenderModePlugin {
         var modulesToMove = [];
         chunks.forEach(function(chunk) {
           chunk.modules.forEach(function(module) {
-            if (module.request && util.isGlobalizeRuntimeModule(module.request)) {
+            if (module.request && util.isGlobalizeRuntimeModule(module.request, [])) {
               modulesToMove.push({chunk: chunk, module: module});
             }
           });
@@ -208,7 +208,7 @@ class PrerenderModePlugin {
         const globalizeModuleIdsMap = {};
 
         modules.forEach(function(module) {
-          if (module.request && util.isGlobalizeRuntimeModule(module.request)) {
+          if (module.request && util.isGlobalizeRuntimeModule(module.request, [])) {
             // While request has the full pathname, aux has something like "globalize/dist/globalize-runtime/date".
             var aux = module.request.split("/");
             aux = aux.slice(aux.lastIndexOf("globalize")).join("/").replace(/\.js$/, "");

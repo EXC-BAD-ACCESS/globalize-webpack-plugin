@@ -74,7 +74,8 @@ class GlobalizeCompilerHelper {
       // end generating the content for the whole chunk will ultimately verify
       // whether or not formatters/parsers has been used.
       if (!/No formatters or parsers has been provided/.test(e.message) || !request) {
-        throw e;
+        // throw e;
+        content = "module.exports = {};";
       }
       content = "module.exports = require(\"globalize\");"; // "module.exports = {};";
     }
