@@ -53,7 +53,11 @@ module.exports = {
     if(dll) {
       filepath = dll.request;
     }
-    console.log("!!!filepath = '" + filepath + "' is a " + typeof filepath + "!!!")
+
+    if(!(typeof filepath === 'string' )) {
+      return false;
+    }
+    
     filepath = filepath.split( /[\/\\]/ );
     const i = filepath.lastIndexOf("globalize-runtime");
     const j = filepath.lastIndexOf("globalize-runtime.js");
