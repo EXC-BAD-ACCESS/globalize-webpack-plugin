@@ -129,7 +129,7 @@ class PrerenderModePlugin {
 
         var modulesToMove = [];
         chunks.forEach(function(chunk) {
-          chunk.modules.forEach(function(module) {
+          chunk.getModules().forEach(function(module) {
             if (module.request && util.isGlobalizeRuntimeModule(module.request, [])) {
               modulesToMove.push({chunk: chunk, module: module});
             }
@@ -144,7 +144,7 @@ class PrerenderModePlugin {
         });
 
         chunks.forEach(function(chunk) {
-          chunk.modules.forEach(function(module) {
+          chunk.getModules().forEach(function(module) {
             if (globalizeCompilerHelper.isCompiledDataModule(module.request)) {
               hasAnyModuleBeenIncluded = true;
               module.removeChunk(chunk);
