@@ -258,7 +258,7 @@ class PrerenderModePlugin {
         if(!/globalize-compiled-data/.test(chunk.name)) {
           var source = new ConcatSource();
           source.add("(function(localeFile) {\nreturn ");
-          var replace = bootstrapSource.source().replace(/var Globalize = __webpack_require__.+/g,"var Globalize = require(localeFile);");
+          var replace = bootstrapSource.source().replace(/var Globalize = __webpack_require__[^;]+/g,"var Globalize = require(localeFile)");
           source.add(replace);
           source.add("\n})");
           return source;
