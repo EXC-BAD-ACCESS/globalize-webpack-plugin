@@ -213,7 +213,7 @@ class PrerenderModePlugin {
           for (const module of chunk.modulesIterable) {
             if (module.request && util.isGlobalizeRuntimeModule(module.request, [])) {
               // While request has the full pathname, aux has something like "globalize/dist/globalize-runtime/date".
-              var aux = request.split(/[\/\\]/);
+              var aux = module.request.split(/[\/\\]/);
               aux = aux.slice(aux.lastIndexOf("globalize")).join("/").replace(/\.js$/, "");
 
               let moduleId = module.id;
