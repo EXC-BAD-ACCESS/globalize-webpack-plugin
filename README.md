@@ -25,10 +25,11 @@ Use *globalize-webpack-plugin* if your application uses [Globalize][] for intern
 
 #### Webpack & Globalize versions
 
-Starting from *v2.0.0*, only *webpack 3* is supported. If you need support for *webpack 2*, use our *v1.x* releases. If you need support for *webpack 1*, use our *v0.x* releases.
+Starting from *v3.0.0*, only *webpack 4* is supported. If you need support for *webpack 3*, use our *v2.x* releases. If you need support for *webpack 2*, use our *v1.x* releases. If you need support for *webpack 1*, use our *v0.x* releases.
 
 | globalize-webpack-plugin | webpack | globalize     |
 | ------------------------ | ------- | ------------- |
+| 3.x                      | ^4.0.0  | ^1.3.0        |
 | 2.x                      | ^3.0.0  | ^1.3.0        |
 | 1.1.x                    | ^2.2.0  | ^1.3.0        |
 | 1.0.x                    | ^2.2.0  | ^1.1.0 <1.3.0 |
@@ -41,7 +42,7 @@ Starting from *v2.0.0*, only *webpack 3* is supported. If you need support for *
 
 ```js
 new globalizePlugin({
-	production: true/false // true: production, false: development
+	production: true/false, // true: production, false: development
 	developmentLocale: "en", // locale to be used for development.
 	supportedLocales: [ "en", "es", "zh", ... ], // locales that should be built support for.
 	cldr: function() {}, // CLDR data (optional)
@@ -61,7 +62,7 @@ new globalizePlugin({
 
 *cldr* (optional) a *Function* taking one argument: locale, a *String*; returning an *Object* with the CLDR data for the passed locale. Defaults to the entire supplemental data plus the entire main data for the *developmentLocale*. On the development mode, this content is served on runtime. On production mode, this content is used for precompiling the final bundle.
 
-*messages* (optional) tells the plugin where to find messages for a certain locale.
+*messages* (optional) a *String* or *Array of Strings* that tells the plugin where to find messages for a certain locale.
 
 *timeZoneData* (optional) a *Function* that returns an *Object* with IANA time zone data. an *Object* with the IANA time zone data. Defaults to the entire IANA time zone data from [iana-tz-data](https://github.com/rxaviers/iana-tz-data) package. On the development mode, this content is served on runtime. On production mode, this content is used for precompiling the final bundle.
 

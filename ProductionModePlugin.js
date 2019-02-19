@@ -33,7 +33,9 @@ class ProductionModePlugin {
   }
 
   apply(compiler) {
-    let globalizeSkipAMDPlugin;
+    const globalizeSkipAMDPlugin = new SkipAMDPlugin(/(^|[\/\\])globalize($|[\/\\])/);
+    const normalModuleReplacementPlugin = new NormalModuleReplacementPlugin(/(^|[\/\\])globalize$/, "globalize/dist/globalize-runtime");
+    const globalizeRuntimeskipAMDPlugin = new SkipAMDPlugin(/(^|[\/\\])globalize-runtime($|[\/\\])/);
     const output = this.output || "i18n-[locale].js";
     const globalizeCompilerHelper = new GlobalizeCompilerHelper({
       cldr: this.cldr,
@@ -44,97 +46,98 @@ class ProductionModePlugin {
       webpackCompiler: compiler
     });
 
-    compiler.apply(
-      // Skip AMD part of Globalize Runtime UMD wrapper.
-      globalizeSkipAMDPlugin = new SkipAMDPlugin(/(^|[\/\\])globalize($|[\/\\])/),
+    // Skip AMD part of Globalize Runtime UMD wrapper.
+    globalizeSkipAMDPlugin.apply(compiler);
 
-      // Replaces `require("globalize")` with `require("globalize/dist/globalize-runtime")`.
-      new NormalModuleReplacementPlugin(/(^|[\/\\])globalize$/, "globalize/dist/globalize-runtime"),
+    // Replaces `require("globalize")` with `require("globalize/dist/globalize-runtime")`.
+    normalModuleReplacementPlugin.apply(compiler);
 
-      // Skip AMD part of Globalize Runtime UMD wrapper.
-      new SkipAMDPlugin(/(^|[\/\\])globalize-runtime($|[\/\\])/)
-    );
+    // Skip AMD part of Globalize Runtime UMD wrapper.
+    globalizeRuntimeskipAMDPlugin.apply(compiler);
 
     const bindParser = (parser) => {
-
       // Map each AST and its request filepath.
-      parser.plugin("program", (ast) => {
+      parser.hooks.program.tap("GlobalizePlugin", (ast) => {
         globalizeCompilerHelper.setAst(parser.state.current.request, ast);
       });
 
-      // "Intercepts" all `require("globalize")` by transforming them into a
-      // `require` to our custom precompiled formatters/parsers, which in turn
-      // requires Globalize, set the default locale and then exports the
-      // Globalize object.
-      parser.plugin("call require:commonjs:item", (expr, param) => {
-        const request = parser.state.current.request;
-        if(param.isString() && param.string === "globalize" && this.moduleFilter(request) &&
-          !(globalizeCompilerHelper.isCompiledDataModule(request))) {
+      // Precompile formatters & parsers from modules that `require("globalize")`.
+      parser.hooks.call
+        .for("require")
+        .tap("GlobalizePlugin", (expr) => {
+          if (expr.arguments.length !== 1) {
+            return;
+          }
+          const param = parser.evaluateExpression(expr.arguments[0]);
+          const request = parser.state.current.request;
+          if (param.isString() && param.string === "globalize" && this.moduleFilter(request) &&
+            !(globalizeCompilerHelper.isCompiledDataModule(request))) {
 
-          // Extract Globalize formatters and parsers for all the locales. Webpack
-          // allocates distinct moduleIds per locale, enabling multiple locales to
-          // be used at the same time.
-          this.supportedLocales.forEach((locale) => {
-            // Statically extract Globalize formatters and parsers from the request
-            // file only. Then, create a custom precompiled formatters/parsers module
-            // that will be called instead of Globalize, which in turn requires
-            // Globalize, set the default locale and then exports the Globalize
-            // object.
-            const compiledDataFilepath = globalizeCompilerHelper.createCompiledDataModule(request, locale);
-
-            // Skip the AMD part of the custom precompiled formatters/parsers UMD
-            // wrapper.
+            // (a) Extract Globalize formatters & parsers, then create a custom
+            //     precompiled formatters & parsers module.
+            // (b) Add a dependency to the precompiled module. Note
+            //     `require("globalize")` doesn't get replaced by `require(<custom
+            //     precompiled module>)` because we do NOT `return true` here (as
+            //     intended).
             //
-            // Note: We're hacking an already created SkipAMDPlugin instance instead
-            // of using a regular code like the below in order to take advantage of
-            // its position in the plugins list. Otherwise, it'd be too late to plugin
-            // and AMD would no longer be skipped at this point.
-            //
-            // compiler.apply(new SkipAMDPlugin(new RegExp(compiledDataFilepath));
-            //
-            // 1: Removes the leading and the trailing `/` from the regexp string.
-            globalizeSkipAMDPlugin.requestRegExp = new RegExp([
-              globalizeSkipAMDPlugin.requestRegExp.toString().slice(1, -1)/* 1 */,
-              util.escapeRegex(compiledDataFilepath)
-            ].join("|"));
+            // Why to iterate over all the locales? Webpack allocates distinct
+            // moduleIds per locale, enabling multiple locales to be used at the
+            // same time.
+            this.supportedLocales.forEach((locale) => {
+              /* a */
+              const compiledDataFilepath = globalizeCompilerHelper.createCompiledDataModule(request, locale);
 
-            // Add localized Globalize formatters and parsers as dependencies
-            // Replace require("globalize") with require(<custom precompiled module of
-            // developmentLocale>).
-            const dep = new CommonJsRequireDependency(compiledDataFilepath, locale == this.developmentLocale ? param.range : null);
-            dep.loc = expr.loc;
-            dep.optional = !!parser.scope.inTry;
-            parser.state.current.addDependency(dep);
-          });
+              // Skip the AMD part of the custom precompiled formatters/parsers UMD
+              // wrapper.
+              //
+              // Note: We're hacking an already created SkipAMDPlugin instance instead
+              // of using a regular code like the below in order to take advantage of
+              // its position in the plugins list. Otherwise, it'd be too late to plugin
+              // and AMD would no longer be skipped at this point.
+              //
+              // compiler.apply(new SkipAMDPlugin(new RegExp(compiledDataFilepath));
+              //
+              // 1: Removes the leading and the trailing `/` from the regexp string.
+              globalizeSkipAMDPlugin.requestRegExp = new RegExp([
+                globalizeSkipAMDPlugin.requestRegExp.toString().slice(1, -1)/* 1 */,
+                util.escapeRegex(compiledDataFilepath)
+              ].join("|"));
 
-          return true;
-        }
-      });
+              /* b */
+              const dep = new CommonJsRequireDependency(compiledDataFilepath, null);
+              dep.loc = expr.loc;
+              dep.optional = !!parser.scope.inTry;
+              parser.state.current.addDependency(dep);
+            });
+          }
+        });
     };
 
     // Create globalize-compiled-data chunks for the supportedLocales.
-    compiler.plugin("entry-option", (context) => {
+    compiler.hooks.entryOption.tap("GlobalizePlugin", (context) => {
       this.supportedLocales.forEach((locale) => {
-        compiler.apply(new MultiEntryPlugin(context, [], "globalize-compiled-data-" + locale ));
+        const multiEntryPlugin = new MultiEntryPlugin(context, [], "globalize-compiled-data-" + locale);
+        multiEntryPlugin.apply(compiler);
       });
     });
 
     // Place the Globalize compiled data modules into the globalize-compiled-data
     // chunks.
     let allModules;
-    compiler.plugin("this-compilation", (compilation) => {
-      compilation.plugin("optimize-modules", (modules) => {
+    compiler.hooks.thisCompilation.tap("GlobalizePlugin", (compilation) => {
+      const optimizeModulesHook = (modules) => {
         allModules = modules;
-      });
+      };
+
+      compilation.hooks.optimizeModules.tap("GlobalizePlugin", optimizeModulesHook);
     });
 
-
-    compiler.plugin("this-compilation", (compilation) => {
-      compilation.plugin("after-optimize-chunks", (chunks) => {
+    compiler.hooks.thisCompilation.tap("GlobalizePlugin", (compilation) => {
+      compilation.hooks.afterOptimizeChunks.tap("GlobalizePlugin", (chunks) => {
         let hasAnyModuleBeenIncluded;
         const compiledDataChunks = new Map(
           chunks.filter((chunk) => /globalize-compiled-data/.test(chunk.name)).
-                 map(chunk => [chunk.name.replace("globalize-compiled-data-", ""), chunk] )
+          map(chunk => [chunk.name.replace("globalize-compiled-data-", ""), chunk] )
         );
 
         allModules.forEach((module) => {
@@ -215,12 +218,12 @@ class ProductionModePlugin {
       //    So, we accomplish what we need: have the data loaded as soon as the
       //    chunk is loaded, which means it will be available when each
       //    individual parent code needs it.
-      compilation.plugin("after-optimize-module-ids", () => {
+      compilation.hooks.afterOptimizeModuleIds.tap("GlobalizePlugin", () => {
         const globalizeModuleIds = [];
         const globalizeModuleIdsMap = {};
 
         compilation.chunks.forEach((chunk) => {
-          chunk.forEachModule((module) => {
+          for (const module of chunk.modulesIterable) {
             let aux;
             var request = module.request;
             if (request && util.isGlobalizeRuntimeModule(request, this.manifests)) {
@@ -246,7 +249,7 @@ class ProductionModePlugin {
               globalizeModuleIds.push(moduleId);
               globalizeModuleIdsMap[aux] = moduleId;
             }
-          });
+          }
         });
 
         // rewrite the modules in the localized chunks:
@@ -268,7 +271,7 @@ class ProductionModePlugin {
             chunk.removeModule(chunk.entryModule);
             chunk.entryModule = chunk.getModules().find((module) => module.context && module.context.endsWith(".tmp-globalize-webpack"));
 
-            const newModules = chunk.mapModules((module) => {
+            const newModules = Array.from(chunk.modulesIterable, (module) => {
               let fnContent;
 
               if (module === chunk.entryModule) {
@@ -310,23 +313,38 @@ class ProductionModePlugin {
               newModule.context = module.context;
               newModule.id = module.id;
               newModule.dependencies = module.dependencies;
+
+              const createHash = require("webpack/lib/util/createHash");
+              const outputOptions = compilation.outputOptions;
+              const hashFunction = outputOptions.hashFunction;
+              const hashDigest = outputOptions.hashDigest;
+              const hashDigestLength = outputOptions.hashDigestLength;
+              const newModuleHash = createHash(hashFunction);
+
+              newModule.updateHash(newModuleHash);
+              newModule.hash = newModuleHash.digest(hashDigest);
+              newModule.renderedHash = newModule.hash.substr(0, hashDigestLength);
+              // Essentially set the buildInfo.cacheable
+              newModule.build(null, null, null, null, () => {});
+
               return newModule;
             });
 
             // remove old modules with modified clones
             // chunk.removeModule doesn't always find the module to remove
             // ¯\_(ツ)_/¯, so we have to be be a bit more thorough here.
-            chunk.forEachModule((module) => module.removeChunk(chunk));
+            for (const module of chunk.modulesIterable) {
+              module.removeChunk(chunk);
+            }
 
             // install the rewritten modules
             chunk.setModules(newModules);
           });
       });
 
-
       // Set the right chunks order. The globalize-compiled-data chunks must
       // appear after globalize runtime modules, but before any app code.
-      compilation.plugin("optimize-chunk-order", (chunks) => {
+      compilation.hooks.optimizeChunkOrder.tap("GlobalizePlugin", (chunks) => {
         const cachedChunkScore = {};
         var that = this;
         function moduleScore(module) {
@@ -349,8 +367,8 @@ class ProductionModePlugin {
       });
     });
 
-    compiler.plugin("compilation", (compilation, params) => {
-      params.normalModuleFactory.plugin("parser", bindParser);
+    compiler.hooks.normalModuleFactory.tap("GlobalizePlugin", factory => {
+      factory.hooks.parser.for("javascript/auto").tap("GlobalizePlugin", bindParser);
     });
   }
 }

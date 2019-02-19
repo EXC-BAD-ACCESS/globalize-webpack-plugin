@@ -3,6 +3,7 @@
 const fs = require("fs");
 const globalizeCompiler = require("globalize-compiler");
 const path = require("path");
+const { SyncHook } = require("tapable");
 
 class GlobalizeCompilerHelper {
   constructor(attributes) {
@@ -17,6 +18,7 @@ class GlobalizeCompilerHelper {
     this.timeZoneData = attributes.timeZoneData;
     this.tmpdir = attributes.tmpdir;
     this.webpackCompiler = attributes.webpackCompiler;
+    this.webpackCompiler.hooks.globalizeBeforeCompileExtracts = new SyncHook(["locale", "attributes", "request"]);
   }
 
   setAst(request, ast) {
@@ -62,7 +64,7 @@ class GlobalizeCompilerHelper {
       attributes.messages = this.messages[locale];
     }
 
-    this.webpackCompiler.applyPlugins("globalize-before-compile-extracts", locale, attributes, request);
+    this.webpackCompiler.hooks.globalizeBeforeCompileExtracts.call(locale, attributes, request);
 
     try {
       content = globalizeCompiler.compileExtracts(attributes);

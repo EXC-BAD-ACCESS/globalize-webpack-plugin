@@ -20,13 +20,12 @@ class GlobalizePlugin {
   }
 
   apply(compiler) {
-    compiler.apply(
-      this.attributes.production ?
-      (compiler.options.target === "node" ?
-        new PrerenderModePlugin(this.attributes) :
-        new ProductionModePlugin(this.attributes) ) :
-      new DevelopmentModePlugin(this.attributes)
-    );
+    const plugin = this.attributes.production ?
+    (compiler.options.target === "node" ?
+      new PrerenderModePlugin(this.attributes) :
+      new ProductionModePlugin(this.attributes) ) :
+      new DevelopmentModePlugin(this.attributes);
+    plugin.apply(compiler);
   }
 }
 

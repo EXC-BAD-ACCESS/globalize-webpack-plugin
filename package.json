@@ -1,6 +1,6 @@
 {
   "name": "globalize-webpack-plugin",
-  "version": "2.0.3",
+  "version": "3.0.1",
   "description": "Globalize.js webpack plugin",
   "main": "index.js",
   "files": [
@@ -14,7 +14,7 @@
     "lint": "eslint *js test"
   },
   "engines": {
-    "node": ">=4.3.0"
+    "node": ">=6"
   },
   "repository": {
     "type": "git",
@@ -27,7 +27,9 @@
   ],
   "author": "Rafael Xavier de Souza",
   "contributors": [
-    "James Bellenger <james@bellenger.org>"
+    "James Bellenger <james@bellenger.org>",
+    "Frédéric Miserey <frederic@none.net>",
+    "Ghislain Seguin <gseguin@google.com>"
   ],
   "license": "MIT",
   "bugs": {
@@ -38,7 +40,8 @@
     "cldr-data": ">=25",
     "globalize-compiler": "^1.0.0",
     "iana-tz-data": ">=2017.0.0",
-    "skip-amd-webpack-plugin": "0.2.x"
+    "skip-amd-webpack-plugin": "^1.0.0",
+    "tapable": "1.0.0"
   },
   "peerDependencies": {
     "cldr-data": ">=25",
