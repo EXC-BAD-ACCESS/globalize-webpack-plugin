@@ -225,7 +225,7 @@ class PrerenderModePlugin {
               globalizeModuleIdsMap[aux] = moduleId;
             }
           }
-        }
+        });
 
         compilation.moduleTemplate.plugin("render", function(moduleSource, module, chunk) {
           if(/globalize-compiled-data/.test(chunk.name) && !module.request) {
