@@ -211,20 +211,21 @@ class PrerenderModePlugin {
 
         compilation.chunks.forEach((chunk) => {
           for (const module of chunk.modulesIterable) {
-          if (module.request && util.isGlobalizeRuntimeModule(module.request, [])) {
-            // While request has the full pathname, aux has something like "globalize/dist/globalize-runtime/date".
-            var aux = request.split(/[\/\\]/);
-            aux = aux.slice(aux.lastIndexOf("globalize")).join("/").replace(/\.js$/, "");
+            if (module.request && util.isGlobalizeRuntimeModule(module.request, [])) {
+              // While request has the full pathname, aux has something like "globalize/dist/globalize-runtime/date".
+              var aux = request.split(/[\/\\]/);
+              aux = aux.slice(aux.lastIndexOf("globalize")).join("/").replace(/\.js$/, "");
 
-            let moduleId = module.id;
-            if (typeof moduleId === "string") {
-              moduleId = JSON.stringify(moduleId);
+              let moduleId = module.id;
+              if (typeof moduleId === "string") {
+                moduleId = JSON.stringify(moduleId);
+              }
+
+              globalizeModuleIds.push(moduleId);
+              globalizeModuleIdsMap[aux] = moduleId;
             }
-
-            globalizeModuleIds.push(moduleId);
-            globalizeModuleIdsMap[aux] = moduleId;
           }
-        });
+        }
 
         compilation.moduleTemplate.plugin("render", function(moduleSource, module, chunk) {
           if(/globalize-compiled-data/.test(chunk.name) && !module.request) {
