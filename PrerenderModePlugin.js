@@ -242,10 +242,10 @@ class PrerenderModePlugin {
 
             source = "(function(module, exports, __webpack_require__) {" + source + "})"
 
-            return new PrefixSource(this.outputOptions.sourcePrefix || "", source);
+            return new PrefixSource(/*this.outputOptions.sourcePrefix || */"", source);
           } else if (globalizeCompilerHelper.isCompiledDataModule(module.request)) {
             var newSource = "(function(module, exports, __webpack_require__) {module.exports = __webpack_require__(" + globalizeModuleIds[0] + ");})";
-            return new PrefixSource(this.outputOptions.sourcePrefix || "", newSource);
+            return new PrefixSource(/*this.outputOptions.sourcePrefix || */"", newSource);
           }
 
           return moduleSource;
