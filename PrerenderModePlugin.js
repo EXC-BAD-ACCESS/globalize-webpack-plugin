@@ -11,6 +11,8 @@ const PrefixSource = require("webpack-core/lib/PrefixSource");
 const SkipAMDPlugin = require("skip-amd-webpack-plugin");
 const util = require("./util");
 
+var nodeUtil = require('util');
+
 /**
 * Prerender Mode:
 * - Have Globalize modules replaced with their runtime modules.
@@ -122,12 +124,29 @@ class PrerenderModePlugin {
       });
     });
 
-    compiler.plugin("this-compilation", (compilation) => {
-      compilation.plugin("after-optimize-chunks", (chunks) => {
-        var hasAnyModuleBeenIncluded;
-        var compiledDataChunks = chunks.filter(function(chunk) {
-          return /globalize-compiled-data/.test(chunk.name);
-        });
+    // Place the Globalize compiled data modules into the globalize-compiled-data
+    // chunks.
+    let allModules;
+    compiler.hooks.thisCompilation.tap("GlobalizePlugin", (compilation) => {
+      const optimizeModulesHook = (modules) => {
+        allModules = modules;
+      };
+
+      compilation.hooks.optimizeModules.tap("GlobalizePlugin", optimizeModulesHook);
+    });
+
+    compiler.hooks.thisCompilation.tap("GlobalizePlugin", (compilation) => {
+      compilation.hooks.afterOptimizeChunks.tap("GlobalizePlugin", (chunks) => {
+        let hasAnyModuleBeenIncluded;
+
+        //console.error("allModules: ", nodeUtil.inspect(allModules));
+
+        const compiledDataChunks = new Map(
+          chunks.filter((chunk) => /globalize-compiled-data/.test(chunk.name)).
+          map(chunk => [chunk.name.replace("globalize-compiled-data-", ""), chunk] )
+        );
+
+        console.error("compiledDataChunks: " + nodeUtil.inspect(compiledDataChunks))
 
         var modulesToMove = [];
         chunks.forEach(function(chunk) {
@@ -137,30 +156,39 @@ class PrerenderModePlugin {
             }
           });
         });
+
         modulesToMove.forEach(function(item) {
-  	    compiledDataChunks.forEach(function(compiledDataChunk) {
-            compiledDataChunk.addModule(item.module);
-            item.module.addChunk(compiledDataChunk);
-          });
-  	    item.module.removeChunk(item.chunk);
+          console.error("modulesToMove: " + nodeUtil.inspect(item.module.request))
+    	    compiledDataChunks.forEach(function(compiledDataChunk) {
+              compiledDataChunk.addModule(item.module);
+              item.module.addChunk(compiledDataChunk);
+            });
+    	    item.module.removeChunk(item.chunk);
         });
 
-        chunks.forEach(function(chunk) {
-          chunk.getModules().forEach(function(module) {
-            if (globalizeCompilerHelper.isCompiledDataModule(module.request)) {
-              hasAnyModuleBeenIncluded = true;
-              module.removeChunk(chunk);
-              compiledDataChunks.forEach(function(compiledDataChunk) {
-                compiledDataChunk.addModule(module);
-                module.addChunk(compiledDataChunk);
-              });
+        allModules.forEach((module) => {
+          let chunkRemoved;
+          if (globalizeCompilerHelper.isCompiledDataModule(module.request)) {
+            console.error("globalizeCompilerHelper: " + module.request)
+            hasAnyModuleBeenIncluded = true;
+            module.getChunks().forEach((chunk) => {
+              chunkRemoved = module.removeChunk(chunk);
+              if (!chunkRemoved) {
+                throw new Error("Failed to remove chunk " + chunk.id + " for module " + module.request);
+              }
+            });
+            for (let [locale, chunk] of compiledDataChunks.entries()) {
+              if (module.request.endsWith(locale + ".js")) {
+                chunk.addModule(module);
+                module.addChunk(chunk);
+              }
             }
-          });
+          }
         });
-        compiledDataChunks.forEach(function(chunk) {
-          var locale = chunk.name.replace("globalize-compiled-data-", "");
+
+        for (let [locale, chunk] of compiledDataChunks.entries()) {
           chunk.filenameTemplate = output.replace("[locale]", locale);
-        });
+        }
         if(!hasAnyModuleBeenIncluded) {
           console.warn("No Globalize compiled data module found");
         }
@@ -211,11 +239,16 @@ class PrerenderModePlugin {
 
         compilation.chunks.forEach((chunk) => {
           for (const module of chunk.modulesIterable) {
-            if (module.request && util.isGlobalizeRuntimeModule(module.request, [])) {
-              // While request has the full pathname, aux has something like "globalize/dist/globalize-runtime/date".
-              var aux = module.request.split(/[\/\\]/);
+            let aux;
+            const request = module.request;
+            if (request && util.isGlobalizeRuntimeModule(request)) {
+              // While request has the full pathname, aux has something like
+              // "globalize/dist/globalize-runtime/date".
+              aux = request.split(/[\/\\]/);
               aux = aux.slice(aux.lastIndexOf("globalize")).join("/").replace(/\.js$/, "");
 
+              // some plugins, like HashedModuleIdsPlugin, may change module ids
+              // into strings.
               let moduleId = module.id;
               if (typeof moduleId === "string") {
                 moduleId = JSON.stringify(moduleId);
@@ -227,29 +260,106 @@ class PrerenderModePlugin {
           }
         });
 
-        compilation.moduleTemplate.plugin("render", function(moduleSource, module, chunk) {
-          if(/globalize-compiled-data/.test(chunk.name) && !module.request) {
+        // rewrite the modules in the localized chunks:
+        //   - entry module will contain the compiled formatters and parsers
+        //   - non-entry modules will be rewritten to export globalize
+        compilation.chunks
+          .filter((chunk) => /globalize-compiled-data/.test(chunk.name))
+          .forEach((chunk) => {
+            // remove dead entry module for these reasons
+            //   - because the module has no dependencies, it won't be rendered
+            //     with __webpack_require__, making it difficult to modify its
+            //     source in a way that can import globalize
+            //
+            //   - it was a placeholder MultiModule that held no content, created
+            //     when we added a MultiEntryPlugin
+            //
+            //   - the true entry module should be globalize-compiled-data
+            //     module, which has been created as a NormalModule
+            chunk.removeModule(chunk.entryModule);
+            chunk.entryModule = chunk.getModules().find((module) => module.context.endsWith(".tmp-globalize-webpack"));
 
-            // hack? to convince the webpack into adding __webpack_require__ to the function arg list
-            module.addDependency(new NullDependency());
+            const newModules = Array.from(chunk.modulesIterable, (module) => {
+              let fnContent;
+              if (module === chunk.entryModule) {
+                // rewrite entry module to contain the globalize-compiled-data
+                const locale = chunk.name.replace("globalize-compiled-data-", "");
+                fnContent = globalizeCompilerHelper.compile(locale)
+                  .replace("typeof define === \"function\" && define.amd", "false")
+                  .replace(/require\("([^)]+)"\)/g, (garbage, moduleName) => {
+                    return `__webpack_require__(${globalizeModuleIdsMap[moduleName]})`;
+                  });
+              } else {
+                // rewrite all other modules in this chunk as proxies for
+                // Globalize
+                if (!(module.request && util.isGlobalizeRuntimeModule(module.request, []))) {
+                  fnContent = `module.exports = __webpack_require__(${globalizeModuleIds[0]});`;
+                } else {
+                  console.error("!!!skipping : " + module.request)
+                  return module;
+                }
+              }
 
-            var locale = chunk.name.replace("globalize-compiled-data-", "");
-            var source = globalizeCompilerHelper.compile(locale)
-            .replace("typeof define === \"function\" && define.amd", "false")
-            .replace(/require\("([^)]+)"\)/g, function(garbage, moduleName) {
-              return "__webpack_require__(" + globalizeModuleIdsMap[moduleName] + ")";
+
+
+              // The `module` object in scope here is in each locale chunk, and
+              // any modifications we make will be rendered into every locale
+              // chunk. Create a new module to contain the locale-specific source
+              // modifications we've made.
+              const newModule = new PatchedRawModule(fnContent);
+              newModule.context = module.context;
+              newModule.id = module.id;
+              newModule.dependencies = module.dependencies;
+
+              const createHash = require("webpack/lib/util/createHash");
+              const outputOptions = compilation.outputOptions;
+              const hashFunction = outputOptions.hashFunction;
+              const hashDigest = outputOptions.hashDigest;
+              const hashDigestLength = outputOptions.hashDigestLength;
+              const newModuleHash = createHash(hashFunction);
+
+              newModule.updateHash(newModuleHash);
+              newModule.hash = newModuleHash.digest(hashDigest);
+              newModule.renderedHash = newModule.hash.substr(0, hashDigestLength);
+              // Essentially set the buildInfo.cacheable
+              newModule.build(null, null, null, null, () => {});
+
+              return newModule;
             });
 
-            source = "(function(module, exports, __webpack_require__) {" + source + "})"
+            // remove old modules with modified clones
+            // chunk.removeModule doesn't always find the module to remove
+            // ¯\_(ツ)_/¯, so we have to be be a bit more thorough here.
+            for (const module of chunk.modulesIterable) {
+              module.removeChunk(chunk);
+            }
 
-            return new PrefixSource(/*this.outputOptions.sourcePrefix || */"", source);
-          } else if (globalizeCompilerHelper.isCompiledDataModule(module.request)) {
-            var newSource = "(function(module, exports, __webpack_require__) {module.exports = __webpack_require__(" + globalizeModuleIds[0] + ");})";
-            return new PrefixSource(/*this.outputOptions.sourcePrefix || */"", newSource);
+            // install the rewritten modules
+            chunk.setModules(newModules);
+          });
+      });
+
+      // Set the right chunks order. The globalize-compiled-data chunks must
+      // appear after globalize runtime modules, but before any app code.
+      compilation.hooks.optimizeChunkOrder.tap("GlobalizePlugin", (chunks) => {
+        const cachedChunkScore = {};
+        function moduleScore(module) {
+          if (module.request && util.isGlobalizeRuntimeModule(module.request)) {
+            return 1;
+          } else if (module.request && globalizeCompilerHelper.isCompiledDataModule(module.request)) {
+            return 0;
           }
-
-          return moduleSource;
-        });
+          return -1;
+        }
+        function chunkScore(chunk) {
+          if (!cachedChunkScore[chunk.name]) {
+            cachedChunkScore[chunk.name] = chunk.getModules().reduce((sum, module) => {
+              return Math.max(sum, moduleScore(module));
+            }, -1);
+          }
+          return cachedChunkScore[chunk.name];
+        }
+        chunks.sort((a, b) => chunkScore(a) - chunkScore(b));
       });
     });
 
@@ -267,7 +377,6 @@ class PrerenderModePlugin {
           source.add("\n})");
           return source;
         }
-
         return bootstrapSource;
       });
     });
